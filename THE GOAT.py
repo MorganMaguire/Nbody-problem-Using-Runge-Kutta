@@ -31,7 +31,9 @@ class CelestialObjects():
             return self.mass.cgs.value
         else:
             return self.mass
-
+        
+        
+#Calculating velocities for each body using distance from the Sun
 v_earth=(((c.G*1.98892E30)/1.495978707E11)**0.5)/1000
 v_jupiter=(((c.G*1.98892E30)/7.779089276E11)**0.5)/1000
 v_saturn=(((c.G*1.98892E30)/1.421179772E12)**0.5)/1000
@@ -42,6 +44,8 @@ v_venus=(((c.G*1.98892E30)/1.047185095E11)**0.5)/1000
 v_mercury=(((c.G*1.98892E30)/5.983914828E10)**0.5)/1000
 v_asteroid=(((c.G*1.98892E30)/4.936729733E11)**0.5)/1000
 
+
+#Adding bodies to use in simulation
 Earth=CelestialObjects(name='Earth',
                        pos_vec=np.array([0,1,0])*u.AU,
                        vel_vec=np.array([v_earth.value,0,0])*u.km/u.s,
@@ -83,19 +87,21 @@ Asteroid=CelestialObjects(name='Asteroid',
                        vel_vec=np.array([v_asteroid.value,0,0])*u.km/u.s,
                        mass=59E-4*c.M_earth)
                        
-bodies=[Sun,Mercury,Venus,Earth,Mars,Jupiter,Asteroid]
-#making a class for system
+#list of bodies which can be added to or have elements removed.
+bodies=[Sun,Mercury,Venus,Earth,Mars,Jupiter,Saturn,Neptune,Asteroid]
+
+#making a class for simulation
 class Simulation():
     def __init__(self,bodies,has_units=True):
         self.has_units=has_units
-        self.bodies=bodies
-        self.Nbodies=len(self.bodies)
-        self.Ndim=6
-        self.quant_vec=np.concatenate(np.array([i.return_vec() for i in self.bodies]))
+        self.bodies=bodies #attribute made up of bodies
+        self.Nbodies=len(self.bodies)#length of the list of bodies
+        self.Ndim=6 # number of dimensions is 6 as each body has six elements associated with it x,y,x,vx,vy,vz
+        self.quant_vec=np.concatenate(np.array([i.return_vec() for i in self.bodies])) #concatenation of a list comprehension to store all info in one vector stacked ontop of eachother
         self.mass_vec=np.array([i.return_mass() for i in self.bodies])
         self.name_vec=[i.return_name() for i in self.bodies]
         
-    def set_diff_eqs(self,calc_diff_eqs,**kwargs):
+    def set_diff_eqs(self,calc_diff_eqs,**kwargs): #setting function to call external solver for runge kutta
         self.diff_eqs_kwargs=kwargs
         self.calc_diff_eqs=calc_diff_eqs
         
@@ -105,13 +111,13 @@ class Simulation():
          return 0.5 * np.sum(self.mass_vec * v_squared)
         
     
-    def rk4(self,t,dt):
+    def rk4(self,t,dt): #runge kutta method that uses concatenated vector to update positions and velocities
         k1= dt* self.calc_diff_eqs(t,self.quant_vec,self.mass_vec,**self.diff_eqs_kwargs)
         k2=dt*self.calc_diff_eqs(t+dt*0.5,self.quant_vec+0.5*k1,self.mass_vec,**self.diff_eqs_kwargs)
         k3=dt*self.calc_diff_eqs(t+dt*0.5,self.quant_vec+0.5*k2,self.mass_vec,**self.diff_eqs_kwargs)
         k4=dt*self.calc_diff_eqs(t+dt,self.quant_vec+k3,self.mass_vec,**self.diff_eqs_kwargs)
         
-        y_new=self.quant_vec+((k1+2*k2+2*k3+k4)/6)
+        y_new=self.quant_vec+((k1+2*k2+2*k3+k4)/6) #new vector containing updated information on position and velocity 
         return y_new
     
     def run(self,T,dt,t0=0):
@@ -125,7 +131,7 @@ class Simulation():
             T=T.cgs.value
             dt=dt.cgs.value
         
-        self.history=[self.quant_vec]
+        self.history=[self.quant_vec] #list to store history of positions and velocities
         kinetic_energy_history = []
         clock_time=t0
         nsteps=int((T-t0)/dt)
@@ -147,7 +153,7 @@ class Simulation():
             kinetic_energy_history.append(kinetic_energy)
 
 
-            for h, body in enumerate(self.bodies):
+            for h, body in enumerate(self.bodies): #calculating orbit period
                 x_coord = self.quant_vec[h * 6]
                 if np.any(x_coord >= 0) and h not in orbit_start_times:
                     orbit_start_times[h] = clock_time
@@ -181,18 +187,18 @@ class Simulation():
         print('Simulation completed in {} seconds'.format(runtime))
         self.history=np.array(self.history)
     
-def nbody_solver(t,y,masses):
-    N_bodies=int(len(y)/6)
-    solved_vector=np.zeros(y.size)
+def nbody_solver(t,y,masses): #calculating accelerations on bodies
+    N_bodies=int(len(y)/6) 
+    solved_vector=np.zeros(y.size) # initialising new vector to store velocities and accelerations
     distance=[]
     for i in range(N_bodies):
-        ioffset=i * 6
+        ioffset=i * 6 #creating variable to index through concatenated vector. if i=0, first body is used. if i=1, second body is used
         for j in range(N_bodies):
             joffset=j * 6
             solved_vector[ioffset]=y[ioffset+3]
             solved_vector[ioffset+1]=y[ioffset+4]
             solved_vector[ioffset+2]=y[ioffset+5]
-            if i != j:
+            if i != j: #ensuring acceleration of a body on itself due to itself isnt calculated
                 dx= y[ioffset]-y[joffset]
                 dy=y[ioffset+1]-y[joffset+1]
                 dz=y[ioffset+2]-y[joffset+2]
